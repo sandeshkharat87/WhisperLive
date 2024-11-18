@@ -107,28 +107,49 @@ class Client:
             print(f"Message from Server: {message_data['message']}")
 
     def process_segments(self, segments):
-        """Processes transcript segments."""
-        text = []
+        """Processes transcript segments, saves unique, completed segments, and returns them for real-time classification."""
+        unique_sentences = set()  # Track unique sentences across segments
+        text_buffer = []  # Temporary buffer for displaying/logging
+        # Initialize a list to collect unique, completed segments for return
+        global new_segments_for_classification
+        new_segments_for_classification = []
+
         for i, seg in enumerate(segments):
-            if not text or text[-1] != seg["text"]:
-                text.append(seg["text"])
-                if i == len(segments) - 1 and not seg["completed"]:
-                    self.last_segment = seg
-                elif (self.server_backend == "faster_whisper" and seg["completed"] and
-                      (not self.transcript or
-                        float(seg['start']) >= float(self.transcript[-1]['end']))):
-                    self.transcript.append(seg)
-        # update last received segment and last valid response time
+            current_text = seg["text"].strip()
+
+            # Process only if segment is marked "completed" and is unique
+            if seg.get("completed", False) and current_text and current_text not in unique_sentences:
+                unique_sentences.add(current_text)
+                text_buffer.append(current_text)
+                
+                # Append to the list for classification use
+                new_segments_for_classification.append(current_text)
+
+                # Save to file immediately
+                with open("unique_transcript-2.txt", "w") as file:
+                    file.write(f"{current_text}\n")
+
+            # Manage the last segment if it's incomplete
+            if i == len(segments) - 1 and not seg["completed"]:
+                self.last_segment = seg
+            elif (self.server_backend == "faster_whisper" and seg["completed"] and
+                (not self.transcript or float(seg['start']) >= float(self.transcript[-1]['end']))):
+                self.transcript.append(seg)
+
+        # Update last received segment and time
         if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
             self.last_response_received = time.time()
             self.last_received_segment = segments[-1]["text"]
 
+        # Display last few entries if logging is enabled
         if self.log_transcription:
-            # Truncate to last 3 entries for brevity.
-            text = text[-3:]
+            display_text = text_buffer[-3:]  # Keep the last 3 entries for display
             utils.clear_screen()
-            utils.print_transcript(text)
+            utils.print_transcript(display_text)
 
+        # Return the unique segments for use in classification
+        return new_segments_for_classification
+    
     def on_message(self, ws, message):
         """
         Callback function called when a message is received from the server.
