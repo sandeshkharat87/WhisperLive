@@ -127,7 +127,9 @@ class Client:
 
                 # Save to file immediately
                 with open("unique_transcript-2.txt", "w") as file:
-                    file.write(f"{current_text}\n")
+                    # file.write(f"{current_text}\n")
+                    raw_text = " ".join(new_segments_for_classification)
+                    file.write(f"{raw_text}\n")
 
             # Manage the last segment if it's incomplete
             if i == len(segments) - 1 and not seg["completed"]:
