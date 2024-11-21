@@ -63,6 +63,7 @@ class Client:
         self.log_transcription = log_transcription
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.global_text_collection = []
 
         if translate:
             self.task = "translate"
@@ -107,50 +108,29 @@ class Client:
             print(f"Message from Server: {message_data['message']}")
 
     def process_segments(self, segments):
-        """Processes transcript segments, saves unique, completed segments, and returns them for real-time classification."""
-        unique_sentences = set()  # Track unique sentences across segments
-        text_buffer = []  # Temporary buffer for displaying/logging
-        # Initialize a list to collect unique, completed segments for return
-        global new_segments_for_classification
-        new_segments_for_classification = []
+        TEXT_COLLECTION = []
 
         for i, seg in enumerate(segments):
             current_text = seg["text"].strip()
 
-            # Process only if segment is marked "completed" and is unique
-            if seg.get("completed", False) and current_text and current_text not in unique_sentences:
-                unique_sentences.add(current_text)
-                text_buffer.append(current_text)
-                
-                # Append to the list for classification use
-                new_segments_for_classification.append(current_text)
+            if seg.get("completed", False):
+                if TEXT_COLLECTION:
+                    if current_text != TEXT_COLLECTION[-1]:
+                        TEXT_COLLECTION.append(current_text)
+                        self.global_text_collection.append(current_text)
 
-                # Save to file immediately
-                with open("unique_transcript-2.txt", "w") as file:
-                    # file.write(f"{current_text}\n")
-                    raw_text = " ".join(new_segments_for_classification)
-                    file.write(f"{raw_text}\n")
+                        #### save text file for word length of 300
+                        os.makedirs("convo", exist_ok=True)
+                        with open("convo/convo.txt", "w") as f:
+                            raw_text = " ".join(TEXT_COLLECTION)
+                            f.write(f"{raw_text}")
+                else:
+                    TEXT_COLLECTION.append(current_text)
+                    self.global_text_collection.append(current_text)
 
-            # Manage the last segment if it's incomplete
-            if i == len(segments) - 1 and not seg["completed"]:
-                self.last_segment = seg
-            elif (self.server_backend == "faster_whisper" and seg["completed"] and
-                (not self.transcript or float(seg['start']) >= float(self.transcript[-1]['end']))):
-                self.transcript.append(seg)
-
-        # Update last received segment and time
-        if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
-            self.last_response_received = time.time()
-            self.last_received_segment = segments[-1]["text"]
-
-        # Display last few entries if logging is enabled
-        if self.log_transcription:
-            display_text = text_buffer[-3:]  # Keep the last 3 entries for display
-            utils.clear_screen()
-            utils.print_transcript(display_text)
-
+        
         # Return the unique segments for use in classification
-        return new_segments_for_classification
+        return TEXT_COLLECTION
     
     def on_message(self, ws, message):
         """
