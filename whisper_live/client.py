@@ -107,31 +107,55 @@ class Client:
         elif status == "WARNING":
             print(f"Message from Server: {message_data['message']}")
 
-    def process_segments(self, segments):
-        TEXT_COLLECTION = []
+    # def process_segments(self, segments):
+    #     TEXT_COLLECTION = []
 
-        for i, seg in enumerate(segments):
-            current_text = seg["text"].strip()
+    #     for i, seg in enumerate(segments):
+    #         current_text = seg["text"].strip()
 
-            if seg.get("completed", False):
-                if TEXT_COLLECTION:
-                    if current_text != TEXT_COLLECTION[-1]:
-                        TEXT_COLLECTION.append(current_text)
-                        self.global_text_collection.append(current_text)
+    #         if seg.get("completed", False):
+    #             if TEXT_COLLECTION:
+    #                 if current_text != TEXT_COLLECTION[-1]:
+    #                     TEXT_COLLECTION.append(current_text)
+    #                     self.global_text_collection.append(current_text)
 
-                        #### save text file for word length of 300
-                        os.makedirs("convo", exist_ok=True)
-                        with open("convo/convo.txt", "w") as f:
-                            raw_text = " ".join(TEXT_COLLECTION)
-                            f.write(f"{raw_text}")
-                else:
-                    TEXT_COLLECTION.append(current_text)
-                    self.global_text_collection.append(current_text)
+    #                     #### save text file for word length of 300
+    #                     os.makedirs("convo", exist_ok=True)
+    #                     with open("convo/convo.txt", "w") as f:
+    #                         raw_text = " ".join(TEXT_COLLECTION)
+    #                         f.write(f"{raw_text}")
+    #             else:
+    #                 TEXT_COLLECTION.append(current_text)
+    #                 self.global_text_collection.append(current_text)
 
         
-        # Return the unique segments for use in classification
-        return TEXT_COLLECTION
-    
+    #     # Return the unique segments for use in classification
+    #     return TEXT_COLLECTION
+
+
+    def process_segments(self, segments):
+        """Processes transcript segments."""
+        text = []
+        for i, seg in enumerate(segments):
+            if not text or text[-1] != seg["text"]:
+                text.append(seg["text"])
+                if i == len(segments) - 1 and not seg.get("completed", False):
+                    self.last_segment = seg
+                elif (self.server_backend == "faster_whisper" and seg.get("completed", False) and
+                        (not self.transcript or
+                        float(seg['start']) >= float(self.transcript[-1]['end']))):
+                    self.transcript.append(seg)
+        # update last received segment and last valid response time
+        if self.last_received_segment is None or self.last_received_segment != segments[-1]["text"]:
+            self.last_response_received = time.time()
+            self.last_received_segment = segments[-1]["text"]
+
+        if self.log_transcription:
+            # Truncate to last 3 entries for brevity.
+            text = text[-3:]
+            utils.clear_screen()
+            utils.print_transcript(text)
+
     def on_message(self, ws, message):
         """
         Callback function called when a message is received from the server.
@@ -311,7 +335,8 @@ class TranscriptionTeeClient:
             print(f"[WARN]: Unable to access microphone. {error}")
             self.stream = None
 
-    def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
+    # def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
+    def compile(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
         """
         Start the transcription process.
 
